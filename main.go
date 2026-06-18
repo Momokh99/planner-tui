@@ -2,12 +2,12 @@ package main
 
 import (
 	"encoding/json"
+	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/bubbles/textinput"
 	"log"
 	"os"
 	"path/filepath"
 	"time"
-
-	tea "charm.land/bubbletea/v2"
 )
 
 const dataFile = ".todo.json"
@@ -20,17 +20,22 @@ type Todo struct {
 }
 
 type model struct {
-	todos     []Todo
-	cursor    int
-	dayCursor int
-	weekStart time.Time
-	view      viewState
+	todos      []Todo
+	cursor     int
+	dayCursor  int
+	weekStart  time.Time
+	view       viewState
+	titleInput textinput.Model
+	dateInput  textinput.Model
+	formStep   int // 0 = title, 1 = date
+	editingID  int
 }
 type viewState int
 
 const (
 	weekView viewState = iota
 	listView
+	formView
 )
 
 // try to find whare to safe the todos and save them
@@ -59,7 +64,7 @@ func saveTodos(todos []Todo) error {
 }
 
 // the essentials for the tui
-func (m model) Init() tea.Cmd { return nil }
+func (m model) Init() tea.Cmd { return textinput.Blink }
 
 func initialModel() model {
 	// Map Go weekday (Sun=0..Sat=6) to column index (Mon=0..Sun=6)
@@ -69,18 +74,79 @@ func initialModel() model {
 	} else {
 		dayCursor--
 	}
+
+	ti := textinput.New()
+	ti.Placeholder = "Task title"
+	ti.CharLimit = 100
+	ti.Width = 40
+
+	di := textinput.New()
+	di.Placeholder = "2026-06-19"
+	di.CharLimit = 10
+	di.Width = 12
+
 	return model{
-		todos:     []Todo{},
-		weekStart: mondayOfWeek(time.Now()),
-		view:      weekView,
-		cursor:    0,
-		dayCursor: dayCursor,
+		todos:      []Todo{},
+		weekStart:  mondayOfWeek(time.Now()),
+		view:       weekView,
+		cursor:     0,
+		dayCursor:  dayCursor,
+		titleInput: ti,
+		dateInput:  di,
 	}
 }
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
-	case tea.KeyPressMsg:
+	case tea.KeyMsg:
+		// If in form view, handle form keys first
+		if m.view == formView {
+			switch msg.String() {
+			case "esc":
+				m.view = listView
+			case "enter":
+				if m.formStep == 0 {
+					if m.titleInput.Value() == "" {
+						return m, nil
+					}
+					m.formStep = 1
+					m.dateInput.Focus()
+					m.titleInput.Blur()
+				} else {
+					dueDate, err := time.Parse("2006-01-02", m.dateInput.Value())
+					if err != nil {
+						return m, nil
+					}
+					todo := Todo{Title: m.titleInput.Value(), DueDate: dueDate}
+					if m.editingID >= 0 {
+						todo.ID = m.todos[m.editingID].ID
+						todo.Completed = m.todos[m.editingID].Completed
+						m.todos[m.editingID] = todo
+					} else {
+						maxID := 0
+						for _, t := range m.todos {
+							if t.ID > maxID {
+								maxID = t.ID
+							}
+						}
+						todo.ID = maxID + 1
+						m.todos = append(m.todos, todo)
+					}
+					saveTodos(m.todos)
+					m.view = listView
+				}
+			default:
+				var cmd tea.Cmd
+				if m.formStep == 0 {
+					m.titleInput, cmd = m.titleInput.Update(msg)
+				} else {
+					m.dateInput, cmd = m.dateInput.Update(msg)
+				}
+				return m, cmd
+			}
+			return m, nil
+		}
+
 		// Global keys
 		switch msg.String() {
 		case "q", "ctrl+c":
@@ -111,23 +177,42 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.view == listView && m.cursor < len(m.todos)-1 {
 				m.cursor++
 			}
-		case "enter":
-			if m.view == listView && len(m.todos) > 0 {
+	case "enter":
+		if m.view == listView && len(m.todos) > 0 {
 				m.todos[m.cursor].Completed = !m.todos[m.cursor].Completed
 				saveTodos(m.todos)
 			}
+		case "a":
+			if m.view == listView {
+				m.initAddForm()
+			}
+		case "e":
+			if m.view == listView && len(m.todos) > 0 {
+				m.initEditForm(m.cursor)
+			}
+		case "d":
+			if m.view == listView && len(m.todos) > 0 {
+				m.todos = append(m.todos[:m.cursor], m.todos[m.cursor+1:]...)
+				if m.cursor >= len(m.todos) && m.cursor > 0 {
+					m.cursor--
+				}
+				saveTodos(m.todos)
+			}
+
 		}
 	}
 	return m, nil
 }
-func (m model) View() tea.View {
+func (m model) View() string {
 	switch m.view {
 	case weekView:
-		return tea.NewView(m.weekView())
+		return m.weekView()
 	case listView:
-		return tea.NewView(m.listView()) // we'll build this in Step 5
+		return m.listView()
+	case formView:
+		return m.formView()
 	default:
-		return tea.NewView("unknown view")
+		return "unknown view"
 	}
 }
 

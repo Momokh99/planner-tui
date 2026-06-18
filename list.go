@@ -26,6 +26,6 @@ func (m model) listView() string {
 		}
 		s += line + "\n"
 	}
-	s += "\n  [Enter] toggle  [t] week  [q] quit"
+	s += "\n  [a] add  [e] edit  [d] delete  [Enter] toggle  [t] week  [q] quit"
 	return s
 }
