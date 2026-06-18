@@ -1,0 +1,9 @@
+planner-tui
+*.exe
+go.work
+go.work.sum
+.idea/
+.vscode/
+*.swp
+.DS_Store
+Thumbs.db
