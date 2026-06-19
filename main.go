@@ -2,8 +2,8 @@ package main
 
 import (
 	"encoding/json"
-	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/bubbles/textinput"
+	tea "github.com/charmbracelet/bubbletea"
 	"log"
 	"os"
 	"path/filepath"
@@ -27,8 +27,10 @@ type model struct {
 	view       viewState
 	titleInput textinput.Model
 	dateInput  textinput.Model
-	formStep   int // 0 = title, 1 = date
+	formStep   int
 	editingID  int
+	width      int
+	height     int
 }
 type viewState int
 
@@ -98,6 +100,10 @@ func initialModel() model {
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
+	case tea.WindowSizeMsg:
+		m.width = msg.Width
+		m.height = msg.Height
+		m.titleInput.Width = msg.Width / 3
 	case tea.KeyMsg:
 		// If in form view, handle form keys first
 		if m.view == formView {
@@ -177,8 +183,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.view == listView && m.cursor < len(m.todos)-1 {
 				m.cursor++
 			}
-	case "enter":
-		if m.view == listView && len(m.todos) > 0 {
+		case "enter":
+			if m.view == listView && len(m.todos) > 0 {
 				m.todos[m.cursor].Completed = !m.todos[m.cursor].Completed
 				saveTodos(m.todos)
 			}
@@ -217,12 +223,10 @@ func (m model) View() string {
 }
 
 func main() {
-	todos, _ := loadTodos() // load from disk
-	m := initialModel()     // build initial state
-	m.todos = todos         // inject loaded data
-	p := tea.NewProgram(m)  // start the TUI
-	//           ^
-	// The program calls m.Init() automatically
+	todos, _ := loadTodos()
+	m := initialModel()
+	m.todos = todos
+	p := tea.NewProgram(m, tea.WithAltScreen())
 	if _, err := p.Run(); err != nil {
 		log.Fatal(err)
 	}

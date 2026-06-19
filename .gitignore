@@ -1,4 +1,5 @@
 planner-tui
+todo-tui
 *.exe
 go.work
 go.work.sum
