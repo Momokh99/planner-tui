@@ -83,7 +83,29 @@ func (m model) weekView() string {
 		}
 	}
 	markerRow := lipgloss.JoinHorizontal(lipgloss.Top, markers...)
-	return title + "\n" + markerRow + "\n" + headerRow + "\n" + contentRow + "\n\n  ←  → day  [t] list  [q] quit"
+
+	divider := strings.Repeat("─", m.width) + "\n"
+	cursorDate := m.weekStart.AddDate(0, 0, m.dayCursor)
+	dayTodos := todosForDay(m.todos, cursorDate)
+
+	details := "\n" + divider
+	details += "  " + cursorDate.Format("Mon Jan 2") + "\n\n"
+	if len(dayTodos) == 0 {
+		details += "  No tasks\n"
+	}
+	for _, t := range dayTodos {
+		check := "○"
+		if t.Completed {
+			check = "●"
+		}
+		line := "  " + check + " " + t.Title + " — " + t.DueDate.Format("Jan 02")
+		if !t.Completed && t.DueDate.Before(time.Now()) {
+			line = overdue.Render(line)
+		}
+		details += line + "\n"
+	}
+
+	return title + "\n" + markerRow + "\n" + headerRow + "\n" + contentRow + details + "\n  ←  → day  [t] list  [q] quit"
 }
 func centerText(s string, width int) string {
 	if len(s) >= width {

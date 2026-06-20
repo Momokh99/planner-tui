@@ -3,7 +3,8 @@ package main
 func (m *model) initAddForm() {
 	m.titleInput.Reset()
 	m.titleInput.Focus()
-	m.dateInput.Reset()
+	cursorDate := m.weekStart.AddDate(0, 0, m.dayCursor)
+	m.dateInput.SetValue(cursorDate.Format("2006-01-02"))
 	m.dateInput.Blur()
 	m.formStep = 0
 	m.editingID = -1
