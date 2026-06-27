@@ -2,6 +2,8 @@ package main
 
 import (
 	"encoding/json"
+	"strings"
+
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"log"
@@ -29,6 +31,8 @@ type model struct {
 	dateInput  textinput.Model
 	formStep   int
 	editingID  int
+	deletingID int
+	nextID     int
 	width      int
 	height     int
 }
@@ -38,9 +42,9 @@ const (
 	weekView viewState = iota
 	listView
 	formView
+	confirmView
 )
 
-// try to find whare to safe the todos and save them
 func dataPath() string {
 	home, err := os.UserHomeDir()
 	if err != nil {
@@ -65,7 +69,6 @@ func saveTodos(todos []Todo) error {
 	return os.WriteFile(dataPath(), data, 0644)
 }
 
-// the essentials for the tui
 func (m model) Init() tea.Cmd { return textinput.Blink }
 
 func initialModel() model {
@@ -95,6 +98,7 @@ func initialModel() model {
 		dayCursor:  dayCursor,
 		titleInput: ti,
 		dateInput:  di,
+		deletingID: 0,
 	}
 }
 
@@ -105,6 +109,22 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.height = msg.Height
 		m.titleInput.Width = msg.Width / 3
 	case tea.KeyMsg:
+		// If in confirm view, handle y/n first
+		if m.view == confirmView {
+			switch msg.String() {
+			case "y":
+				m.todos = append(m.todos[:m.deletingID], m.todos[m.deletingID+1:]...)
+				if m.cursor >= len(m.todos) && m.cursor > 0 {
+					m.cursor--
+				}
+				saveTodos(m.todos)
+				m.view = listView
+			case "n", "esc":
+				m.view = listView
+			}
+			return m, nil
+		}
+
 		// If in form view, handle form keys first
 		if m.view == formView {
 			switch msg.String() {
@@ -129,13 +149,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						todo.Completed = m.todos[m.editingID].Completed
 						m.todos[m.editingID] = todo
 					} else {
-						maxID := 0
-						for _, t := range m.todos {
-							if t.ID > maxID {
-								maxID = t.ID
-							}
-						}
-						todo.ID = maxID + 1
+						todo.ID = m.nextID
+						m.nextID++
 						m.todos = append(m.todos, todo)
 					}
 					saveTodos(m.todos)
@@ -157,6 +172,17 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch msg.String() {
 		case "q", "ctrl+c":
 			return m, tea.Quit
+		case "g":
+			if m.view == weekView {
+				m.weekStart = mondayOfWeek(time.Now())
+				dc := int(time.Now().Weekday())
+				if dc == 0 {
+					dc = 6
+				} else {
+					dc--
+				}
+				m.dayCursor = dc
+			}
 		case "t":
 			if m.view == weekView {
 				m.view = listView
@@ -198,34 +224,77 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		case "d":
 			if m.view == listView && len(m.todos) > 0 {
-				m.todos = append(m.todos[:m.cursor], m.todos[m.cursor+1:]...)
-				if m.cursor >= len(m.todos) && m.cursor > 0 {
-					m.cursor--
-				}
-				saveTodos(m.todos)
+				m.deletingID = m.cursor
+				m.view = confirmView
 			}
 
 		}
 	}
 	return m, nil
 }
+func (m model) confirmView() string {
+	s := "Delete this task?\n\n"
+	if len(m.todos) > m.deletingID {
+		s += "  \"" + m.todos[m.deletingID].Title + "\"\n\n"
+	}
+	s += "  [y] yes  [n] no"
+	return s
+}
+
+func (m model) centered(s string) string {
+	if m.width == 0 {
+		return s
+	}
+	lines := strings.Split(s, "\n")
+	maxW := 0
+	for _, l := range lines {
+		w := len([]rune(l))
+		if w > maxW {
+			maxW = w
+		}
+	}
+	pad := (m.width - maxW) / 2
+	if pad < 0 {
+		pad = 0
+	}
+	prefix := strings.Repeat(" ", pad)
+	for i, l := range lines {
+		lines[i] = prefix + l
+	}
+	return strings.Join(lines, "\n")
+}
+
 func (m model) View() string {
+	var s string
 	switch m.view {
 	case weekView:
-		return m.weekView()
+		s = m.weekView()
 	case listView:
-		return m.listView()
+		s = m.listView()
 	case formView:
-		return m.formView()
+		s = m.formView()
+	case confirmView:
+		s = m.confirmView()
 	default:
-		return "unknown view"
+		s = "unknown view"
 	}
+	return m.centered(s)
 }
 
 func main() {
-	todos, _ := loadTodos()
+	todos, err := loadTodos()
+	if err != nil {
+		log.Printf("warning: could not load todos from %s: %v", dataPath(), err)
+	}
 	m := initialModel()
 	m.todos = todos
+	maxID := 0
+	for _, t := range todos {
+		if t.ID > maxID {
+			maxID = t.ID
+		}
+	}
+	m.nextID = maxID + 1
 	p := tea.NewProgram(m, tea.WithAltScreen())
 	if _, err := p.Run(); err != nil {
 		log.Fatal(err)

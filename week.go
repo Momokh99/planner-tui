@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"strings"
 	"time"
 
@@ -42,7 +43,13 @@ func (m model) weekView() string {
 	todayHeader := dayHeader.Background(lipgloss.Color("58"))
 	dayBox := lipgloss.NewStyle().Width(cw).Align(lipgloss.Center)
 	todayBox := dayBox.Background(lipgloss.Color("58"))
+	cursorBox := dayBox.Background(lipgloss.Color("239"))
 	overdue := lipgloss.NewStyle().Foreground(lipgloss.Color("196"))
+
+	maxLines := (m.height - 10) / 2
+	if maxLines < 2 {
+		maxLines = 2
+	}
 
 	var headers []string
 	var columns []string
@@ -54,11 +61,20 @@ func (m model) weekView() string {
 		if isToday {
 			headerStyle = todayHeader
 			boxStyle = todayBox
+		} else if i == m.dayCursor {
+			headerStyle = dayHeader.Background(lipgloss.Color("239"))
+			boxStyle = cursorBox
 		}
 		header := d.Format("Mon 2")
 		headers = append(headers, headerStyle.Render(header))
 		content := ""
-		for _, t := range todosForDay(m.todos, d) {
+		dayTasks := todosForDay(m.todos, d)
+		for ti, t := range dayTasks {
+			if ti >= maxLines {
+				remaining := len(dayTasks) - ti
+				content += fmt.Sprintf("  +%d more\n", remaining)
+				break
+			}
 			title := truncate(t.Title, cw-3)
 			if t.Completed {
 				content += "✓ " + title + "\n"
@@ -89,7 +105,7 @@ func (m model) weekView() string {
 	dayTodos := todosForDay(m.todos, cursorDate)
 
 	details := "\n" + divider
-	details += "  " + cursorDate.Format("Mon Jan 2") + "\n\n"
+	details += "  " + cursorDate.Format("Mon Jan 2, 2006") + "\n\n"
 	if len(dayTodos) == 0 {
 		details += "  No tasks\n"
 	}
@@ -105,7 +121,7 @@ func (m model) weekView() string {
 		details += line + "\n"
 	}
 
-	return title + "\n" + markerRow + "\n" + headerRow + "\n" + contentRow + details + "\n  ←  → day  [t] list  [q] quit"
+	return title + "\n" + markerRow + "\n" + headerRow + "\n" + contentRow + details + "\n  ←  → day  [g] today  [t] list  [q] quit"
 }
 func centerText(s string, width int) string {
 	if len(s) >= width {

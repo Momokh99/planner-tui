@@ -1,8 +1,13 @@
 package main
 
-import "github.com/charmbracelet/lipgloss"
+import (
+	"time"
+
+	"github.com/charmbracelet/lipgloss"
+)
 
 var selectedStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("57"))
+var overdueStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("196"))
 
 func (m model) listView() string {
 	s := "My Todos\n\n"
@@ -21,6 +26,9 @@ func (m model) listView() string {
 		date := t.DueDate.Format("Jan 02")
 
 		line := cursor + check + " " + t.Title + " — " + date
+		if !t.Completed && t.DueDate.Before(time.Now()) {
+			line = overdueStyle.Render(line)
+		}
 		if m.cursor == i {
 			line = selectedStyle.Render(line)
 		}
